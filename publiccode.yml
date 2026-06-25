@@ -1,0 +1,36 @@
+publiccodeYmlVersion: 0.5.0
+name: ÖREB-Viewer
+applicationSuite: ÖREB-Kataster
+url: https://github.com/kanton-bern/oerebViewer.git
+landingURL: https://github.com/kanton-bern/oerebViewer
+softwareVersion: 3.0.0
+releaseDate: 2025-03-03
+platforms:
+  - web
+categories:
+  - data-visualization
+developmentStatus: stable
+softwareType: standalone/web
+organisation:
+  uri: https://ld.admin.ch/canton/2
+  name: Bern
+description:
+  en:
+    localisedName: ÖREB-Viewer
+    shortDescription: Source code to setup a viewer for the cadastre of public law
+      restrictions on landownership
+    longDescription: The ÖREB Viewer displays extracts from the ÖREB cadastre as an
+      HTML application in a web browser. It requires a canton’s ÖREB web service
+      as its backend. Currently, the viewer is in use and under development by the cantons of Bern and Graubünden.
+    documentation: https://github.com/kanton-bern/oerebViewer/blob/main/README.md
+    features:
+      - Display Extract
+legal:
+  license: MIT
+maintenance:
+  type: none
+localisation:
+  localisationReady: true
+  availableLanguages:
+    - de
+    - fr
