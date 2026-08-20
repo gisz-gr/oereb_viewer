@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { convertToSwissCoordinates } from '~/helpers/coordinates'
+import { useI18n } from 'vue-i18n'
+import { convertToSwissCoordinates, parseCoordinateQuery, isWithinBoundary } from '~/helpers/coordinates'
+import type { CoordinateQueryResult, CoordinateBoundary } from '~/helpers/coordinates'
 import { usePropertyStore } from '~/store/property'
 import { useNotificationStore } from '~/store/notification'
-import { getView, getSearchService } from '~/config/setup'
+import { getView, getSearchService, getCoordinateBoundary } from '~/config/setup'
 import { stringTemplate } from '~/helpers/template'
 import { fetchEsriToken } from '~/services/esritoken'
 import { useOereb } from '~/composables/useOereb'
@@ -54,8 +56,11 @@ export const useMapStore = defineStore('map', () => {
   const contentType = ref<string>('map')
   const view = ref<ConfigObject | null>(null)
   const searchService = ref<ConfigObject | null>(null)
+  const coordinateBoundary = ref<CoordinateBoundary | null>(null)
   const minZoom = ref<number>(0)
   const maxZoom = ref<number>(42)
+
+  const i18n = useI18n()
 
   async function initializeStore() {
     const viewConfig = await getView()
@@ -64,6 +69,7 @@ export const useMapStore = defineStore('map', () => {
     minZoom.value = viewConfig.minZoom || 0
     maxZoom.value = viewConfig.maxZoom || 42
     searchService.value = await getSearchService()
+    coordinateBoundary.value = (await getCoordinateBoundary()) as CoordinateBoundary | null
   }
 
   const isSatelliteView = computed(() => viewType.value === 'satellite')
@@ -166,6 +172,8 @@ export const useMapStore = defineStore('map', () => {
   }
 
   async function searchResultSelected(item: SearchResult) {
+    if (item?.$isDisabled) return
+
     setSelectedSearchResult(item)
 
     if (item) {
@@ -185,8 +193,45 @@ export const useMapStore = defineStore('map', () => {
     }
   }
 
+  function coordinateToSearchResult(coordinate: CoordinateQueryResult, query: string): SearchResult {
+    return {
+      id: `coordinate-${Math.round(coordinate.x)}-${Math.round(coordinate.y)}`,
+      label: `${query.trim()} (${i18n.t(`search_coordinate_${coordinate.type}`)})`,
+      lat: coordinate.lat,
+      lon: coordinate.lon,
+      x: coordinate.x,
+      y: coordinate.y,
+    }
+  }
+
   async function updateSearchQuery(newSearchQuery: string) {
     if (!newSearchQuery || newSearchQuery === '') {
+      return
+    }
+
+    // coordinate pairs (WGS84, LV95, LV03, DMS) are resolved locally
+    // instead of being sent to the search service
+    const coordinate = parseCoordinateQuery(newSearchQuery)
+    if (coordinate) {
+      setSearchQuery(newSearchQuery)
+
+      // outside the configured canton boundary the coordinate is shown
+      // but not selectable
+      if (
+        coordinateBoundary.value
+        && !isWithinBoundary(coordinate.x, coordinate.y, coordinateBoundary.value)
+      ) {
+        setSearchResults([{
+          id: `coordinate-outside-${Math.round(coordinate.x)}-${Math.round(coordinate.y)}`,
+          label: `${newSearchQuery.trim()} (${i18n.t('search_coordinate_outside')})`,
+          $isDisabled: true,
+        }])
+        markSearchResultIsCompleted()
+        return
+      }
+
+      setSearchResults([coordinateToSearchResult(coordinate, newSearchQuery)])
+      markSearchResultIsCompleted()
       return
     }
 
@@ -207,6 +252,10 @@ export const useMapStore = defineStore('map', () => {
       const response = await fetch(endpoint)
       const data = await response.json()
 
+      // a newer query (e.g. an instantly resolved coordinate pair) may have
+      // been submitted while this request was in flight - drop stale results
+      if (searchQuery.value !== newSearchQuery) return
+
       if (typeof searchService.value?.parser !== 'function')
         throw new Error(
           'searchService.parse is not a function. provide a function to parse the response as search result.',
@@ -217,6 +266,8 @@ export const useMapStore = defineStore('map', () => {
       setSearchResults(results)
       markSearchResultIsCompleted()
     } catch (err) {
+      if (searchQuery.value !== newSearchQuery) return
+
       setSearchResults([])
       markSearchResultIsCompleted()
       throw err
@@ -232,9 +283,7 @@ export const useMapStore = defineStore('map', () => {
     if (zoom.value === null) return
 
     const newValue = zoom.value + 0.5
-    console.log('zoomInActionClicked', newValue, zoom.value)
     if (newValue <= maxZoom.value) {
-      console.log('zoomInActionClicked2', newValue, zoom.value)
       setZoom(newValue)
     }
   }
@@ -243,9 +292,7 @@ export const useMapStore = defineStore('map', () => {
     if (zoom.value === null) return
 
     const newValue = zoom.value - 0.5
-    console.log('zoomOutActionClicked', newValue, zoom.value)
     if (newValue >= minZoom.value) {
-      console.log('zoomOutActionClicked2', newValue, zoom.value)
       setZoom(newValue)
     }
   }
@@ -291,11 +338,9 @@ export const useMapStore = defineStore('map', () => {
     clearPreview()
     previewCoordinates.value = swissCoordinate
 
-    let EGRIDs: EGRIDResponse[] = []
-
     try {
       const response = await getEGRID(globalCoordinate)
-      EGRIDs = Array.isArray(response) ? response : []
+      const EGRIDs: EGRIDResponse[] = Array.isArray(response) ? response : []
 
       setPreviewEGRID(EGRIDs)
       setPreviewFeatures(EGRIDs[0]?.limit ?? null)
