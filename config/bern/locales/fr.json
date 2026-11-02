@@ -62,5 +62,5 @@
   "amount": "Nombre",
   "show_changes": "Changer le statut juridique entre 'en vigueur' et 'Modification avec/sans effet anticipé'",
   "detail_updated_date": "Etat de la mensuration officielle",
-  "external_instructions": "Instructions du Visualiseur RDPPF"
+  "external_instructions": "Instructions du visualiseur RDPPF"
 }
